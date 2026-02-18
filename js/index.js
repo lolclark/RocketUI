@@ -9,8 +9,7 @@ let draggedElement = null;
 let historyIndex = -1;
 let selectedKeyPath = '';
 let currentAuthMode = 'password';
-// const GITHUB_URL = 'https://raw.githubusercontent.com/yourname/yourrepo/main/commands.json';
-const GITHUB_URL = './commands.json';
+const GITHUB_URL = 'https://raw.githubusercontent.com/lolclark/RocketUI/refs/heads/master/commands.json';
 
 /* =========================
 ② BOOTSTRAP FLOW
