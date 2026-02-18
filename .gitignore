@@ -1,0 +1,30 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Electron build output (NEVER commit these)
+out/
+dist/
+build/
+
+# Local configuration & Secrets
+# This prevents your local testing servers/PINs from being uploaded
+config.json
+.env
+.env.local
+
+# SSH / Security
+*.pem
+*.key
+*.pub
+known_hosts
+
+# Operating System files
+.DS_Store
+Thumbs.db
+*.log
+
+# Editor-specific (VS Code / JetBrains)
+.vscode/
+.idea/
+*.sublime-project

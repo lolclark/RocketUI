@@ -1,0 +1,225 @@
+<head>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <!-- FIRST START PAGE -->
+    <div id="first-start-container" class="onboarding-overlay" style="display:none;">
+        <div class="onboarding-card">
+            <div class="onboarding-header">
+                <span class="app-logo">🚀</span>
+                <h1>Welcome to rocketpool-ui</h1>
+                <p>Your minimalist dashboard for remote Rocket Pool node management.</p>
+            </div>
+
+            <div class="onboarding-steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <h3>Open Configuration</h3>
+                        <p>Click the <strong>Get Started</strong> or <strong>Menu</strong> icon to open Settings.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <h3>Add SSH Details</h3>
+                        <p>Enter your node's IP address and credentials to establish a secure link.</p>
+                        <p>You can also use <strong>Private Key/Passphrase</strong> & <strong>2FA</strong> (if configured on your node)</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <h3>Deploy Commands</h3>
+                        <p>Find easy to use rocketpool commands. Use the dashboard to monitor services, check rewards, or run custom scripts.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="onboarding-footer">
+                <button class="btn-primary" onclick="toggleMenu()">Get Started →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SIDEMENU -->
+    <div id="sideMenu" class="side-menu">
+        <a href="javascript:void(0)" class="closebtn" onclick="toggleMenu()">&times;</a>
+        
+        <div class="menu-content">
+            <h3>Nodes</h3>
+            <div id="serverList"></div>
+            <button onclick="addNewConfig()" class="add-btn">+ Add New Node</button>
+
+            <hr style="border: 0; border-top: 1px solid #333; margin: 20px;">
+            
+            <div id="configForm" style="padding: 0 20px; display:none">
+                <h3>Settings</h3>
+                
+                <div class="auth-toggle">
+                    <button id="mode-password" class="toggle-btn active" onclick="setAuthMode('password')">Password</button>
+                    <button id="mode-key" class="toggle-btn" onclick="setAuthMode('key')">Private Key</button>
+                </div>
+
+                <input type="text" id="nodeName" placeholder="Node Name">
+                <input type="text" id="host" placeholder="IP Address">
+                <input type="text" id="username" placeholder="Username">
+
+                <div id="password-area">
+                    <input type="password" id="nodePassword" placeholder="SSH Password">
+                </div>
+
+                <div id="key-area" style="display: none;">
+                    <input type="password" id="passphrase" placeholder="Key Passphrase (Optional)">
+                    <button onclick="selectFile()" class="secondary-btn">Select Private Key</button>
+                    <p id="filePathDisplay" style="font-size: 10px; color: #888; margin-top: 5px;"></p>
+                </div>
+
+                <button onclick="saveCurrentConfig()" class="save-btn" style="width: 100%; margin-top: 15px;">Save This Node</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SIDEMENU BUTTON -->
+    <div id="burger" class="burger-btn" onclick="toggleMenu()">
+        ☰
+    </div>
+
+    <!-- MAIN -->
+    <div id="actions" style="display:none;">
+        <div id="currentNodeDisplay" class="node-display">
+            <div id="versionUnknownBadge" class="version-unknown-banner" style="display:none;"></div>
+            <div id="versionOkBadge" class="version-ok-banner" style="display:none;"></div>
+            <div id="rebootIndicator" class="reboot-indicator" onclick="triggerReboot()" style="display:none;">
+                <span style="margin-right:5px;">🔄</span> Reboot Required
+            </div>
+            <div id="systemUpdateIndicator" class="system-update-indicator" onclick="triggerSystemUpdate()" style="display:none;"></div>
+            <span style="color: #888; font-size: 0.8rem; text-transform: uppercase;">Active Node</span>
+            <div id="versionStatus" style="padding: 5px; text-align: center;">
+                <div id="updateBadge" class="update-banner" style="display:none;"></div>
+            </div>
+            <div id="nodeDisplayName" style="font-size: 1.4rem; font-weight: bold; color: white;">Select a Node...</div>
+        </div>
+        <div id="commands">
+            <div class="restore-defaults" onclick="restoreDefaults()">Restore default commands</div>
+            <div id="command-container" class="command-grid">
+                <div id="add-command-trigger" class="add-plus-minimal" onclick="openModal()">+</div>
+            </div>
+        </div>
+        <div class="console-wrapper">
+            <div id="output">Output will appear here...</div>
+            <div class="command-line-area">
+                <span class="prompt">rocketpool@node:~$</span>
+                <input type="text" id="terminal-input" placeholder="Type a command..." autocomplete="off">
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALS -->
+    <div id="sudoModal" class="sudo-modal">
+        <div class="modal-content">
+            <h3 style="margin-top:0;">🔐 Sudo Authentication</h3>
+            <p>The server requires your sudo password to continue</p>
+            <input type="password" id="sudoPwdInput" 
+                style="width: 80%; text-align: center; font-size: 1.2em;" 
+                placeholder="Password">
+            <br><br>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="submitSudo()" style="flex: 1;">Confirm</button>
+                <button onclick="cancelSudo()" style="flex: 1; background: #555;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="commandModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 id="modal-title">🚀 Add Command</h3>
+            <input type="hidden" id="edit-index" value="-1">
+            <div class="input-group full-width">
+                <label>Icon</label>
+                <select id="new-icon">
+                    <optgroup label="General">
+                        <option value="🚀">🚀 Launch / Node</option>
+                        <option value="📊">📊 Status / Stats</option>
+                        <option value="🔄">🔄 Sync / Restart</option>
+                        <option value="📜">📜 Logs / Output</option>
+                        <option value="⚙️">⚙️ Settings</option>
+                    </optgroup>
+                    
+                    <optgroup label="Staking">
+                        <option value="💰">💰 Rewards / Mini-Pools</option>
+                        <option value="💎">💎 Ethereum / Assets</option>
+                        <option value="🏦">🏦 Withdrawal</option>
+                        <option value="📈">📈 Performance</option>
+                    </optgroup>
+                    
+                    <optgroup label="System">
+                        <option value="🖥️">🖥️ Hardware / CPU</option>
+                        <option value="💾">💾 Disk / Storage</option>
+                        <option value="🌐">🌐 Network / P2P</option>
+                        <option value="🛡️">🛡️ Firewall / Security</option>
+                        <option value="🔑">🔑 Keys / Sudo</option>
+                        <option value="🌡️">🌡️ Temperature</option>
+                    </optgroup>
+                    
+                    <optgroup label="Maintenance">
+                        <option value="🛠️">🛠️ Repair / Fix</option>
+                        <option value="🧹">🧹 Cleanup / Prune</option>
+                        <option value="📦">📦 Update / Package</option>
+                        <option value="💤">💤 Sleep / Standby</option>
+                        <option value="🔌">🔌 Connection / Port</option>
+                    </optgroup>
+                </select>
+            </div>
+
+            <div class="input-group full-width">
+                    <label>Label</label>
+                    <input type="text" id="new-label" placeholder="e.g. Node Status">
+                </div>
+
+            <div class="input-group full-width">
+                <label>Command</label>
+                <input type="text" id="new-cmd" placeholder="e.g. rocketpool node status">
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+                <button id="saveBtn" disabled class="btn-save" onclick="saveCommand()">Save Command</button>
+                <button id="addSeparatorBtn" class="btn-save-separator" onclick="saveCommand(true)">Add separator</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="mfaModal" class="mfa-modal">
+        <div class="modal-content">
+            <h3 style="margin-top:0;">🔐 2FA Verification</h3>
+            <p>Enter your 6-digit Authenticator code</p>
+            <input type="text" id="mfaInput" maxlength="6" autofocus style="width: 140px; text-align: center; font-size: 1.5em; letter-spacing: 5px;">
+            <br><br>
+            <button onclick="cancelMfa()" style="width: 100%;">Cancel</button>
+            <button onclick="submitMfa()" style="width: 100%;">Verify & Continue</button>
+        </div>
+    </div>
+
+    <!-- OVERLAYS -->
+    <div id="pinOverlay" class="pin-overlay">
+        <h2 id="pinOverlayHeader" style="color:var(--rp-orange)">Enter Master PIN</h2>
+        <div style="display:flex; gap:10px;">
+            <input type="password" id="pin1" maxlength="1" class="pin-box">
+            <input type="password" id="pin2" maxlength="1" class="pin-box">
+            <input type="password" id="pin3" maxlength="1" class="pin-box">
+            <input type="password" id="pin4" maxlength="1" class="pin-box">
+        </div>
+        <p id="pinError" style="color:red; display:none;">Incorrect PIN</p>
+        <a href="#" id="resetApp" style="margin-top: 30px; color: #666; font-size: 0.8rem; text-decoration: underline;">
+            Forgot PIN? Reset all data
+        </a>
+    </div>
+    <div id="maintOverlay" class="maint-overlay">
+        <div class="spinner"></div> <h2 style="color:var(--rp-orange); margin-top:20px;">Smartnode Update in Progress</h2>
+        <p style="color:#aaa;">Downloading Docker images and restarting services...<br>Please do not close the app.</p>
+    </div>
+
+    <script src="js/index.js"></script>
+</body>
