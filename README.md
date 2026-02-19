@@ -1,4 +1,4 @@
-🚀 RocketPool-UI Node Dashboard (v1.0.0)
+🚀 RocketPoolUI Node Dashboard (v1.0.0)
 
 A lightweight, secure desktop GUI designed for Rocket Pool node operators who prefer a clean interface over the command line. This dashboard allows you to manage your node remotely via SSH with ease.
 
