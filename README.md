@@ -15,11 +15,9 @@ A lightweight, secure desktop GUI designed for Rocket Pool node operators who pr
 
 
 🛠️ Installation (Windows)
- - Download the rocketpool-ui-v1.0.0-win-x64.zip from the Assets section below.
+ - Download the latest rocketpool-ui.Setup.exe using the button below.
 
- - Extract the folder to your preferred location (e.g., Desktop or Documents).
-
- - Double-click rocketpool-ui.exe to launch.
+ - Double-click to launch.
 
  - Add your node details in the "New Node" panel to get started.
 
