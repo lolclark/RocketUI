@@ -12,13 +12,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onPasswordRequired: (callback) => ipcRenderer.on('ssh-password-required', () => callback()),
   pickKeyFile: () => ipcRenderer.invoke('pick-key-file'),
   resetStore: () => ipcRenderer.invoke('reset-store'),
-  runRemoteCmd: (action) => ipcRenderer.invoke('run-remote-cmd', action),
+  runSshCommand: (data) => ipcRenderer.invoke('run-ssh-command', data),
+  sendCtrlC: () => ipcRenderer.send('send-ctrl-c'),
   sendMfaCode: (code) => ipcRenderer.send('submit-mfa', code),
   sendPassword: (password) => ipcRenderer.send('ssh-password-provided', password),
-  sendRemoteCmd: (data) => ipcRenderer.send('run-remote-cmd-async', data),
   setStoreValue: (key, val) => ipcRenderer.invoke('set-store-value', key, val),
   saveSettings: (config) => ipcRenderer.invoke('save-settings', config),
   showDialog: (options) => ipcRenderer.invoke('show-generic-dialog', options),
   unlockApp: (pin) => ipcRenderer.invoke('unlock-app', pin),
-  onStdout: (callback) => ipcRenderer.on('ssh-stdout', (event, value) => callback(value))
+  onStdout: (callback) => ipcRenderer.on('ssh-stdout', (event, value) => callback(value)),
 });

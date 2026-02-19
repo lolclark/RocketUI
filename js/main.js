@@ -13,6 +13,7 @@ const convert = new Convert({
     escapeXML: true
 });
 let activeConn = null;
+let activeStream = null;
 let masterKey = null;
 let mfaResolver = null;
 let connectionStatus = 'disconnected';
@@ -41,6 +42,14 @@ ipcMain.on('cancel-ssh-handshake', () => {
         activeConn.end(); // Gracefully close
         activeConn = null;
         connectionStatus = 'disconnected';
+    }
+});
+
+ipcMain.on('send-ctrl-c', () => {
+    if (activeStream) {
+        // Send the hex code for CTRL+C
+        activeStream.write('\x03'); 
+        console.log("Sent SIGINT (Ctrl+C) to remote process");
     }
 });
 
@@ -278,179 +287,77 @@ ipcMain.handle('reset-store', async () => {
     return true;
 });
 
-// Run Command
-ipcMain.handle('run-remote-cmd', async (event, data) => {
-    if (!masterKey) {
-        return "Error: App is locked. Please enter PIN.";
-    }
-    const serverIndex = typeof data === 'object' ? data.serverIndex : 0;
-    const action = typeof data === 'object' ? data.action : data;
-    const isHeavy = action.includes('service install');
-    const timeout = isHeavy ? 300000 : 40000; // 5 minutes for updates, 40s for others
+ipcMain.handle('run-ssh-command', async (event, data) => {
+    if (!masterKey) return { success: false, error: "App is locked." };
 
-    // 1. Get the encrypted blob
-    const encryptedData = store.get('encrypted_settings');
-    
-    if (!encryptedData) {
-        return "Error: No saved nodes found. Please add a node first.";
-    }
-    
-    try {
-        const decryptedStr = decrypt(encryptedData);
-        const allConfigs = JSON.parse(decryptedStr);
-        const sshConfig = allConfigs[serverIndex];
-
-        if (!sshConfig) {
-            return `Error: Configuration for node at index ${serverIndex} not found.`;
-        }
-
-        const ssh = parseSshConfig(sshConfig);
-        const conn = await getSSHConnection(ssh);
-
-        return new Promise((resolve) => {
-            let cmd = action; // Default to raw action
-            if (action === 'status') cmd = 'rocketpool node status';
-            else if (action === 'sync') cmd = 'rocketpool node sync';
-
-            const fullCmd = `source ~/.profile && source ~/.bashrc && ${cmd}`;
-
-            conn.exec(fullCmd, { pty: true }, (err, stream) => {
-                if (err) return resolve("Exec Error: " + err.message);
-                
-                let output = '';
-                const timer = setTimeout(() => {
-                    if (output) resolve(convert.toHtml(output));
-                    else resolve("Error: Command timed out");
-                }, timeout); 
-
-                // Define the password handler so we can remove it later
-                const passwordHandler = (event, password) => {
-                    stream.write(password + '\n');
-                };
-
-                // Listen for the password
-                ipcMain.once('ssh-password-provided', passwordHandler);
-
-                stream.on('data', (d) => { 
-                    const chunk = d.toString(); // Use 'chunk' consistently
-                    output += chunk;
-
-                    // 1. Live stream to frontend
-                    event.sender.send('ssh-stdout', chunk);
-
-                    // 2. Check for password prompt
-                    if (chunk.toLowerCase().includes('password for') || chunk.includes('[sudo] password')) {
-                        // We don't clearTimeout(timer) here because updates take a long time 
-                        // AFTER the password is given.
-                        setTimeout(() => {
-                            event.sender.send('ssh-password-required');
-                        }, 200);
-                    }
-                });
-
-                stream.stderr.on('data', (data) => {
-                    const errChunk = data.toString();
-                    output += errChunk;
-                    event.sender.send('ssh-stdout', errChunk);
-                });
-
-                stream.on('close', () => {
-                    clearTimeout(timer);
-                    ipcMain.removeListener('ssh-password-provided', passwordHandler);
-                    
-                    // Convert output to HTML, but if it's empty, return a space or a specific string
-                    // to prevent .includes() from crashing on the frontend.
-                    resolve(convert.toHtml(output || "")); 
-                });
-
-                conn.on('error', () => resolve(output || "Connection Error"));
-            });
-        });
-    } catch (err) {
-        return "Connection failed: " + err.message;
-    }
-});
-
-ipcMain.on('run-remote-cmd-async', async (event, data) => {
-    if (!masterKey) {
-        return "Error: App is locked. Please enter PIN.";
-    }
-
-    // 1. Parse incoming data
-    const serverIndex = typeof data === 'object' ? data.serverIndex : 0;
-    const action = typeof data === 'object' ? data.action : data;
-
-    // 2. Retrieve and Decrypt Settings
-    const encryptedData = store.get('encrypted_settings');
-    if (!encryptedData) {
-        event.sender.send('cmd-error', "Error: No saved nodes found.");
-        return;
-    }
+    const { serverIndex = 0, action, isAsync = false } = data;
+    const isHeavy = action.includes('service install') || action.includes('upgrade');
+    const timeoutDuration = isHeavy ? 300000 : 40000;
 
     try {
+        const encryptedData = store.get('encrypted_settings');
         const decryptedStr = decrypt(encryptedData);
-        const allConfigs = JSON.parse(decryptedStr);
-        const sshConfig = allConfigs[serverIndex];
-
-        if (!sshConfig) {
-            event.sender.send('cmd-error', `Configuration not found for index ${serverIndex}`);
-            return;
-        }
-
-        // 3. Establish Connection
+        const sshConfig = JSON.parse(decryptedStr)[serverIndex];
         const conn = await getSSHConnection(parseSshConfig(sshConfig));
 
-        // 4. Prepare the Command
-        // We source profile/bashrc to ensure 'sudo' and other paths are loaded
-        const fullCmd = `source ~/.profile && source ~/.bashrc && ${action}`;
+        return new Promise((resolve) => {
+            const fullCmd = `source ~/.profile && source ~/.bashrc && ${action}`;
+            
+            conn.exec(fullCmd, { pty: true }, (err, stream) => {
+                if (err) return resolve({ success: false, error: err.message });
 
-        // 5. Execute with PTY (Pseudo-Terminal) enabled for interactivity
-        conn.exec(fullCmd, { pty: true }, (err, stream) => {
-            if (err) {
-                console.error("[SSH] Exec Error:", err);
-                event.sender.send('cmd-error', err.message);
-                return;
-            }
+                activeStream = stream;
+                let output = '';
+                
+                // Password Handler logic
+                const pwHandler = (evt, password) => stream.write(password + '\n');
+                ipcMain.on('ssh-password-provided', pwHandler);
 
-            // This buffer helps catch the prompt if it arrives in chunks
-            let outputBuffer = '';
+                const cleanup = () => {
+                    clearTimeout(timer);
+                    ipcMain.removeListener('ssh-password-provided', pwHandler);
+                    activeStream = null;
+                };
 
-            stream.on('data', (d) => {
-                const chunk = d.toString();
-                outputBuffer += chunk;
-
-                // Check for the sudo password prompt
-                if (chunk.toLowerCase().includes('password for') || chunk.toLowerCase().includes('password:')) {
-                    const win = BrowserWindow.getFocusedWindow();
-                    if (win) {
-                        win.show(); // Bring to front
-                        win.focus(); // Force focus back to the app UI
+                const timer = setTimeout(() => {
+                    if (!isAsync) {
+                        cleanup();
+                        resolve({ success: false, error: "Command timed out", output });
                     }
-                    setTimeout(() => {
+                }, timeoutDuration);
+
+                stream.on('data', (d) => {
+                    const chunk = d.toString();
+                    output += chunk;
+                    
+                    // Always stream live output to frontend
+                    event.sender.send('ssh-stdout', chunk);
+
+                    if (chunk.toLowerCase().includes('password')) {
                         event.sender.send('ssh-password-required');
-                    }, 200);
+                    }
+                });
+
+                stream.stderr.on('data', (d) => {
+                    event.sender.send('ssh-stdout', d.toString());
+                });
+
+                stream.on('close', (code) => {
+                    cleanup();
+                    if (isAsync) {
+                        event.sender.send('cmd-finished', "Execution finished.");
+                    }
+                    resolve({ success: true, output: convert.toHtml(output || ""), code });
+                });
+
+                // If Async, resolve immediately so the UI isn't "stuck" awaiting
+                if (isAsync) {
+                    resolve({ success: true, message: "Started async process" });
                 }
             });
-
-            // 6. Listen for the password from the Frontend
-            // We use .once to avoid duplicate listeners if the command is run again
-            ipcMain.once('ssh-password-provided', (evt, password) => {
-                stream.write(password + '\n');
-            });
-
-            stream.on('stderr', (data) => {
-                console.error(`[SSH STDERR]: ${data}`);
-            });
-
-            stream.on('close', (code, signal) => {
-                event.sender.send('cmd-finished', "Command execution finished.");
-                conn.end();
-            });
         });
-
     } catch (err) {
-        console.error("[SSH] Connection Exception:", err);
-        event.sender.send('cmd-error', `Connection failed: ${err.message}`);
+        return { success: false, error: err.message };
     }
 });
 

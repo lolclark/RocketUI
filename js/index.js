@@ -167,6 +167,14 @@ document.getElementById('terminal-input').addEventListener('keydown', function(e
             historyIndex = -1;
             input.value = '';
         }
+    } else if (e.ctrlKey && e.key === 'c') {
+        // If there is text in the input, let the browser do standard Copy
+        // But if the input is EMPTY, we assume the user wants to kill the remote process
+        if (input.value === "") {
+            e.preventDefault(); // Stop browser from trying to copy nothing
+            console.log("Interpreting Ctrl+C as Kill Command");
+            window.electronAPI.sendCtrlC(); 
+        }
     }
 });
 
@@ -280,14 +288,16 @@ function addNewConfig() {
 
 async function checkForSystemUpdates() {
     const cmd = "cat /var/lib/update-notifier/updates-available || echo 'No update data'";
-    const result = await window.electronAPI.runRemoteCmd({
+    
+    const result = await window.electronAPI.runSshCommand({
         serverIndex: activeConfigIndex,
-        action: cmd
+        action: cmd,
+        isAsync: false // We want to wait for the output to parse it
     });
 
     const systemUpdateIndicator = document.getElementById('systemUpdateIndicator');
-    if (result && typeof result === 'string') {
-        const match = result.match(/(\d+)\s+updates\s+can\s+be\s+applied/);
+    if (result.success && result.output) {
+        const match = result.output.match(/(\d+)\s+updates\s+can\s+be\s+applied/);
         
         if (match && parseInt(match[1]) > 0) {
             const count = match[1];
@@ -296,6 +306,9 @@ async function checkForSystemUpdates() {
         } else {
             systemUpdateIndicator.style.display = 'none';
         }
+    } else {
+        systemUpdateIndicator.style.display = 'none';
+        console.error("Could not check for system updates:", result.error);
     }
 }
 
@@ -303,36 +316,56 @@ async function checkRebootStatus() {
     const rebootIndicator = document.getElementById('rebootIndicator');
     const cmd = "[ -f /var/run/reboot-required ] && echo 'YES'";
     
-    const result = await window.electronAPI.runRemoteCmd({
+    const result = await window.electronAPI.runSshCommand({
         serverIndex: activeConfigIndex,
-        action: cmd
+        action: cmd,
+        isAsync: false
     });
 
-    const status = result.replace(/<[^>]*>/g, '').trim();
+    if (result.success && result.output) {
+        const status = result.output.replace(/<[^>]*>/g, '').trim();
 
-    if (status === 'YES') rebootIndicator.style.display = 'flex';
-    else rebootIndicator.style.display = 'none';
+        if (status === 'YES') {
+            rebootIndicator.style.display = 'flex';
+        } else {
+            rebootIndicator.style.display = 'none';
+        }
+    } else {
+        // If command fails or server is unreachable, hide the indicator
+        rebootIndicator.style.display = 'none';
+    }
 }
 
 async function checkVersionUpdate() {
     const statusDiv = document.getElementById('versionStatus');
     const remoteVer = await window.electronAPI.getLatestRpVersion();
 
-    const localRaw = await window.electronAPI.runRemoteCmd({
+    const result = await window.electronAPI.runSshCommand({
         serverIndex: activeConfigIndex,
-        action: 'rocketpool --version'
+        action: 'rocketpool --version',
+        isAsync: false
     });
 
     const badge = document.getElementById('versionUnknownBadge');
-    badge.style.display = 'none';
+    if (badge) badge.style.display = 'none';
 
-    const versionMatch = localRaw.match(/version\s+v?(\d+\.\d+\.\d+)/i);
-    const localVer = versionMatch ? `v${versionMatch[1]}` : null;
+    let localVer = null;
+    if (result.success && result.output) {
+        const versionMatch = result.output.match(/version\s+v?(\d+\.\d+\.\d+)/i);
+        localVer = versionMatch ? `v${versionMatch[1]}` : null;
+    }
 
     if (remoteVer && localVer) {
-        if (localVer !== remoteVer) showUpdateBadge(localVer, remoteVer);
-        else showVersionOkBadge(localVer);
+        if (localVer !== remoteVer) {
+            showUpdateBadge(localVer, remoteVer);
+        } else {
+            showVersionOkBadge(localVer);
+        }
+    } else {
+        if (badge) badge.style.display = 'flex';
     }
+
+    // chain the other maintenance checks
     checkRebootStatus();
     checkForSystemUpdates();
 }
@@ -622,13 +655,19 @@ async function run(action) {
     out.innerText = "⏳ Running command on " + allConfigs[activeConfigIndex].name + "...";
 
     try {
-        const response = await window.electronAPI.runRemoteCmd({ 
+        const result = await window.electronAPI.runSshCommand({ 
             action: action, 
-            serverIndex: activeConfigIndex 
+            serverIndex: activeConfigIndex,
+            isAsync: false 
         });
-        out.innerHTML = response;
+
+        if (result.success) {
+            out.innerHTML = result.output || "Command completed with no output.";
+        } else {
+            out.innerHTML = `<span style="color:red">Error: ${result.error}</span>`;
+        }
     } catch (err) {
-        out.innerHTML = `<span style="color:red">Error: ${err}</span>`;
+        out.innerHTML = `<span style="color:red">System Error: ${err.message}</span>`;
     }
 }
 
@@ -788,41 +827,52 @@ function showVersionUnknownBadge() {
 }
 
 function startReconnectionPoll() {
-    output.innerHTML += "Polling for server heartbeat...";
+    const out = document.getElementById('output');
+    out.innerHTML += "<p style='color:orange'>Polling for server heartbeat (this may take a minute)...</p>";
     
+    // Wait 20 seconds before starting to give the server time to actually shut down
     setTimeout(() => {
         const timer = setInterval(async () => {
             try {
-                const result = await window.electronAPI.runRemoteCmd({
+                const result = await window.electronAPI.runSshCommand({
                     serverIndex: activeConfigIndex,
-                    action: "echo 'online'"
+                    action: "echo 'online'",
+                    isAsync: false
                 });
                 
-                if (result && result.includes('online')) {
+                // Check if the command actually worked and returned our string
+                if (result.success && result.output && result.output.includes('online')) {
                     clearInterval(timer);
-                    document.getElementById('output').innerHTML += "<p style='color:#28a745'>Server is back online! Refreshing dashboard...</p>";
+                    out.innerHTML += "<p style='color:#28a745'>⚡ Server is back online! Refreshing dashboard...</p>";
+                    
+                    // Small delay so the user can see the success message
                     setTimeout(() => { location.reload(); }, 2000);
+                } else {
+                    console.log("Heartbeat failed: Server still booting...");
                 }
             } catch (err) {
-                console.log("Server still offline...");
+                // This catch is for IPC errors, usually we stay in the 'else' above
+                console.log("Waiting for SSH service to start...");
             }
-        }, 10000);
+        }, 10000); // Check every 10 seconds
     }, 20000); 
 }
 
 async function startSmartnodeUpdate() {
     const badge = document.getElementById('updateBadge');
-    badge.disabled = true;
-    badge.style.opacity = "0.5";
-    badge.style.cursor = "not-allowed";
     const overlay = document.getElementById('maintOverlay');
     const output = document.getElementById('output');
 
+    // 1. UI Protection
+    badge.disabled = true;
+    badge.style.opacity = "0.5";
+    badge.style.cursor = "not-allowed";
+
     const choice = await window.electronAPI.showDialog({
         type: 'warning',
-        title: 'Smartnode update',
+        title: 'Smartnode Update',
         message: 'This will stop services briefly',
-        detail: `Are you sure you want to do this ?`,
+        detail: `Are you sure you want to proceed with the update?`,
         buttons: ['Cancel', 'Update'],
         defaultId: 0,
         cancelId: 0
@@ -830,7 +880,7 @@ async function startSmartnodeUpdate() {
 
     if (choice === 1) {
         overlay.style.display = 'flex';
-        output.innerHTML = "<p style='color:var(--rp-orange)'>Initiating sequence...</p>";
+        output.innerHTML = "<p style='color:var(--rp-orange)'>⏳ Initiating update sequence...</p>";
 
         const updateCmd = `
             mkdir -p ~/bin && \
@@ -842,18 +892,32 @@ async function startSmartnodeUpdate() {
         `.trim();
 
         try {
-            const result = await window.electronAPI.runRemoteCmd({
+            // We use isAsync: false because we want the 'finally' block 
+            // to wait until the entire sequence is done.
+            const result = await window.electronAPI.runSshCommand({
                 serverIndex: activeConfigIndex,
-                action: `source ~/.profile && ${updateCmd}`
+                action: updateCmd, // The handler already adds source ~/.profile
+                isAsync: false
             });
 
-            output.innerHTML = result;
+            if (result.success) {
+                output.innerHTML = result.output || "Update sequence completed successfully.";
+            } else {
+                output.innerHTML = `<p style='color:red'>Update Failed: ${result.error}</p>`;
+            }
+
         } catch (err) {
-            output.innerHTML = `<p style='color:red'>Update Failed: ${err.message}</p>`;
+            output.innerHTML = `<p style='color:red'>System Error: ${err.message}</p>`;
         } finally {
+            // 3. Cleanup UI and refresh version status
             overlay.style.display = 'none';
-            setTimeout(checkVersionUpdate(), 10000);
+            setTimeout(() => { () => { checkVersionUpdate(); } }, 10000);
         }
+    } else {
+        // Reset badge if user canceled
+        badge.disabled = false;
+        badge.style.opacity = "1";
+        badge.style.cursor = "pointer";
     }
 }
 
@@ -919,14 +983,37 @@ function toggleMenu() {
     else menu.style.width = "300px";
 }
 
-function triggerReboot() {
+async function triggerReboot() {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     window.blur(); 
     window.focus();
 
-    window.electronAPI.sendRemoteCmd({
+    const result = await window.electronAPI.runSshCommand({
         serverIndex: activeConfigIndex,
-        action: "sudo reboot"
+        action: "sudo reboot",
+        isAsync: true // We don't wait for a result because the server will go offline
+    });
+}
+
+async function triggerSystemUpdate() {
+    // 1. Define the script as a clean string
+    // We use 'DEBIAN_FRONTEND=noninteractive' to prevent purple popups from hanging the app
+    const cmd = `
+        wait_for_apt() {
+            while sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 ; do
+                echo "Waiting for other software managers to finish..."
+                sleep 2
+            done
+        };
+        wait_for_apt && 
+        sudo DEBIAN_FRONTEND=noninteractive apt-get update && 
+        sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -o Dpkg::Options::="--force-confold"
+    `;
+
+    const result = await window.electronAPI.runSshCommand({
+        serverIndex: activeConfigIndex,
+        action: cmd,
+        isAsync: true // We don't wait for a result because the server will go offline
     });
 }
 
