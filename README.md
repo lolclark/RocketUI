@@ -1,13 +1,16 @@
-🚀 RocketPoolUI Node Dashboard (v1.0.0)
+🚀 RocketPoolUI (v1.0.0)
 
 A lightweight, secure desktop GUI designed for Rocket Pool node operators who prefer a clean interface over the command line. This dashboard allows you to manage your node remotely via SSH with ease.
 
+<img width="1920" height="1032" alt="Capture d&#39;écran 2026-02-19 015339" src="https://github.com/user-attachments/assets/d4980df1-ac47-44eb-9f7c-d2735d8d8787" />
+
+
 ✨ Features
- - Multi-Node Management: Save and switch between multiple node configurations (Prater/Holesky/Mainnet).
+ - Multi-Node Management: Save and switch between multiple node configurations.
 
  - Secure SSH Connectivity: Supports both standard password and Private Key (MFA-ready) authentication.
 
- - Customizable Command Palette: Trigger common Rocket Pool CLI actions (Status, Rewards, Logs) with a single click.
+ - Customizable Command Palette: Trigger common Rocket Pool CLI actions (Status, Rewards, Logs) with a single click and add your own ones.
 
  - Dynamic Updates: Fetch the latest recommended command sets directly online.
 
