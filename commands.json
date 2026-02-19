@@ -1,5 +1,7 @@
 [
     { "label": "Node Status", "cmd": "rocketpool node status", "icon": "📊" },
     { "label": "Sync Progress", "cmd": "rocketpool node sync", "icon": "🔄" },
-    { "label": "Mini-Pools", "cmd": "rocketpool minipool status", "icon": "💰" }
+    { "label": "Mini-Pools", "cmd": "rocketpool minipool status", "icon": "💰" },
+    { "separator": true },
+    { "label": "Logs eth1", "cmd": "rocketpool service logs eth1", "icon": "📜" }
 ]
