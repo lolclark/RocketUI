@@ -3,6 +3,6 @@
     { "label": "Sync Progress", "cmd": "rocketpool node sync", "icon": "🔄" },
     { "label": "Mini-Pools", "cmd": "rocketpool minipool status", "icon": "💰" },
     { "separator": true },
-    { "label": "Execution Logs (eth1)", "cmd": "timeout 5s rocketpool service logs eth1", "icon": "📜" },
-    { "label": "Consensus Logs (eth2)", "cmd": "timeout 5s rocketpool service logs eth2", "icon": "📜" }
+    { "label": "Execution Logs", "cmd": "timeout 5s rocketpool service logs eth1", "icon": "📜" },
+    { "label": "Consensus Logs", "cmd": "timeout 5s rocketpool service logs eth2", "icon": "📜" }
 ]
