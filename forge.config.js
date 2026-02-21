@@ -23,12 +23,14 @@ module.exports = {
     {
       name: '@electron-forge/maker-deb',
       config: {
-        icon: './assets/icon.png'
+        icon: './assets/1024x1024.png'
       },
     },
     {
       name: '@electron-forge/maker-rpm',
-      config: {},
+      config: {
+        icon: './assets/1024x1024.png'
+      },
     },
   ],
   plugins: [
