@@ -11,6 +11,7 @@ Available for **Windows** (.exe) and **Linux** (.deb). Use the button below to d
 | :--- | :--- | :--- |
 | **Windows** | `.exe` | x64 |
 | **Linux (Ubuntu/Debian)** | `.deb` | amd64 |
+| **Rocky Linux / RHEL / Fedora** | `.rpm` | x86_64 |
 
 [![Download](https://img.shields.io/badge/Download-Latest%20Release-orange?style=for-the-badge&logo=github)](https://github.com/lolclark/RocketUI/releases/latest)
 
